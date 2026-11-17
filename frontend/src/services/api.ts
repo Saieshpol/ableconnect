@@ -4,7 +4,7 @@ import {
   SimplifyResult, DashboardStats
 } from '../types';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, '');
 
 class ApiService {
   private getHeaders(): HeadersInit {
@@ -40,18 +40,6 @@ class ApiService {
     });
     if (!res.ok) throw new Error('Session invalid');
     return res.json();
-  }
-
-  async demoSwitch(targetRole: string, studentId?: number): Promise<AuthResponse> {
-    const res = await fetch(`${API_BASE}/auth/demo-switch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target_role: targetRole, student_id: studentId }),
-    });
-    if (!res.ok) throw new Error('Failed to switch demo account');
-    const data: AuthResponse = await res.json();
-    localStorage.setItem('ableconnect_token', data.access_token);
-    return data;
   }
 
   // Classes
@@ -188,6 +176,57 @@ class ApiService {
         recent_activities: 0,
       };
     }
+    return res.json();
+  }
+
+  // Disability Certificate Methods
+  async uploadCertificate(studentId: number, formData: FormData): Promise<any> {
+    const token = localStorage.getItem('ableconnect_token');
+    const headers: HeadersInit = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const res = await fetch(`${API_BASE}/students/${studentId}/certificate`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to upload certificate' }));
+      throw new Error(err.detail || 'Failed to upload certificate');
+    }
+    return res.json();
+  }
+
+  async downloadCertificate(studentId: number): Promise<Blob> {
+    const res = await fetch(`${API_BASE}/students/${studentId}/certificate/download`, {
+      headers: this.getHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to download certificate' }));
+      throw new Error(err.detail || 'Failed to download certificate');
+    }
+    return res.blob();
+  }
+
+  async verifyCertificate(studentId: number, status: 'verified' | 'rejected', notes?: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/students/${studentId}/certificate/verify`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ status, notes }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Verification failed' }));
+      throw new Error(err.detail || 'Verification failed');
+    }
+    return res.json();
+  }
+
+  async getCertificateAuditLogs(studentId: number): Promise<any[]> {
+    const res = await fetch(`${API_BASE}/students/${studentId}/certificate/audit-logs`, {
+      headers: this.getHeaders(),
+    });
+    if (!res.ok) return [];
     return res.json();
   }
 }

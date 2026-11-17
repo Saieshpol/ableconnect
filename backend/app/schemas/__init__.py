@@ -1,11 +1,11 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime, date
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 # Auth & User schemas
 class UserLogin(BaseModel):
-    email: str
-    password: str
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=128)
 
 class UserResponse(BaseModel):
     id: int
@@ -21,10 +21,6 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
-
-class DemoSwitchRequest(BaseModel):
-    target_role: str  # 'teacher', 'student', 'guardian'
-    student_id: Optional[int] = None
 
 # Communication Board & AAC schemas
 class SymbolSchema(BaseModel):
@@ -51,7 +47,7 @@ class BoardSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class SentenceSynthesizeRequest(BaseModel):
-    symbols: List[str]
+    symbols: List[str] = Field(min_length=1, max_length=24)
 
 class SentenceSynthesizeResponse(BaseModel):
     sentence: str
@@ -60,13 +56,13 @@ class SentenceSynthesizeResponse(BaseModel):
 
 # Student Request (Help Button)
 class StudentRequestCreate(BaseModel):
-    request_type: str  # 'help', 'break', 'dont_understand', 'washroom', 'uncomfortable'
-    message: Optional[str] = None
+    request_type: str = Field(min_length=1, max_length=50)
+    message: Optional[str] = Field(default=None, max_length=1000)
     class_id: Optional[int] = None
 
 class StudentRequestUpdate(BaseModel):
-    status: str  # 'sent', 'seen', 'responded', 'resolved'
-    response_notes: Optional[str] = None
+    status: Literal["seen", "responded", "resolved"]
+    response_notes: Optional[str] = Field(default=None, max_length=1000)
 
 class StudentRequestResponse(BaseModel):
     id: int
@@ -85,8 +81,8 @@ class StudentRequestResponse(BaseModel):
 
 # Emotion Check-in
 class EmotionCheckinCreate(BaseModel):
-    emotion: str
-    notes: Optional[str] = None
+    emotion: str = Field(min_length=1, max_length=50)
+    notes: Optional[str] = Field(default=None, max_length=1000)
     energy_level: int = 3
     class_id: Optional[int] = None
 
@@ -140,6 +136,38 @@ class StudentCardResponse(BaseModel):
     pending_request_count: int = 0
     latest_emotion: Optional[str] = None
 
+# Disability & Certificate Schemas
+class DisabilityCertificateInfo(BaseModel):
+    disability_type: Optional[str] = None
+    disability_description: Optional[str] = None
+    has_certificate: bool = False
+    certificate_filename: Optional[str] = None
+    certificate_mime_type: Optional[str] = None
+    certificate_file_size: Optional[int] = None
+    certificate_uploaded_at: Optional[datetime] = None
+    certificate_verification_status: str = "unsubmitted"  # 'unsubmitted', 'pending', 'verified', 'rejected'
+    certificate_verification_notes: Optional[str] = None
+    certificate_verified_at: Optional[datetime] = None
+    can_access_certificate: bool = False
+
+    model_config = ConfigDict(from_attributes=True)
+
+class CertificateVerifyRequest(BaseModel):
+    status: str  # 'verified' or 'rejected'
+    notes: Optional[str] = None
+
+class CertificateAuditLogResponse(BaseModel):
+    id: int
+    student_id: int
+    user_id: Optional[int] = None
+    user_name: Optional[str] = None
+    user_role: Optional[str] = None
+    action: str
+    details: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
 class StudentDetailResponse(BaseModel):
     id: int
     user_id: int
@@ -158,6 +186,7 @@ class StudentDetailResponse(BaseModel):
     preferences: Optional[CommunicationPreferenceSchema] = None
     support_instructions: List[SupportInstructionSchema] = []
     classes: List[str] = []
+    disability_info: Optional[DisabilityCertificateInfo] = None
 
 # Class schemas
 class ClassroomCreate(BaseModel):
@@ -217,7 +246,7 @@ class ScheduleItemResponse(BaseModel):
 # Message schema
 class MessageCreate(BaseModel):
     recipient_id: int
-    content: str
+    content: str = Field(min_length=1, max_length=4000)
     message_type: Optional[str] = "text"
     attachments: Optional[str] = None
 

@@ -1,68 +1,46 @@
-# AbleConnect: Development Progress Tracker
+# AbleConnect Development Progress
 
-This document tracks implementation status across the 7 development phases defined in the Master Product Instructions.
+## Phase status
 
----
+| Phase | Status |
+|---|---|
+| 1. Foundation and portals | Implemented; production frontend build passes |
+| 2. Student management and profiles | Existing coverage is partial; not expanded in this hardening pass |
+| 3. AAC and messaging | Existing coverage is partial; authorization tightened |
+| 4. Teacher tools and progress | Existing coverage is partial; authorization tightened |
+| 5. Guardian workflows | Existing coverage is partial; child access is scoped |
+| 6. AI and personalization | Not verified in this pass |
+| 7. Security, tests, and deployment prep | Hardening completed with remaining blockers below |
 
-## 📊 Phase Roadmap Status
+## Production security hardening
 
-| Phase | Description | Status | Completion Date |
-| :---: | :--- | :---: | :---: |
-| **Phase 1** | **Project Foundation, Landing Page, Dashboards & Schema** | **COMPLETED & VERIFIED** | November 18, 2026 |
-| **Phase 2** | Student Management, Profiles & Preferences | Next Phase | Planned |
-| **Phase 3** | Communication Center & AAC Board | Planned | Planned |
-| **Phase 4** | Teacher Tools & Timetables | Planned | Planned |
-| **Phase 5** | Guardian Portal & Authorizations | Planned | Planned |
-| **Phase 6** | AI & Personalization Services | Planned | Planned |
-| **Phase 7** | Testing, Auditing & Deployment | Planned | Planned |
+- [x] Removed `/api/auth/demo-switch`; role tokens are issued only after valid password login.
+- [x] JWT secret is required from the environment; production validation requires a 256-bit-length secret and rejects the previous fallback.
+- [x] Demo seeding and schema auto-creation default off and are rejected in production.
+- [x] Demo persona shortcuts are local-development-only; the production bundle contains no demo passwords.
+- [x] Added shell-only administrator bootstrap; there is no public signup/admin-creation route.
+- [x] Scoped student/class lists, profiles, requests, messages, schedules, and metrics by role and authorized relationships.
+- [x] Certificate uploads require an authorized guardian and validate size, extension, MIME type, and basic file signature. Files remain outside public assets and download routes enforce authorization.
+- [x] Production CORS requires explicit HTTPS origins; wildcard origins are rejected.
+- [x] Frontend uses `VITE_API_URL`; Vite refuses a production build when it is missing.
+- [x] Added an Alembic baseline, Render Blueprint, Vercel config, deployment checklist, and Git ignores for secrets, database files, and private certificate storage.
 
----
+## Verification
 
-## 📝 Phase 1 Detailed Checklist & Verification
+- Frontend production build with `VITE_API_URL`: passed (`tsc` and Vite).
+- Production bundle scan for demo passwords, `localhost:8000`, and `/auth/demo-switch`: no matches.
+- Backend security/authorization tests: **24 passed**.
+- Alembic migration upgrade and `alembic check` on isolated SQLite DB: passed; no schema drift.
+- Production-configured FastAPI ASGI startup and `/api/health`: passed.
+- A live Render PostgreSQL connection, Render disk persistence, and hosted migrations were not verified because no Render services exist in this workspace.
 
-- [x] **Workspace Inspection & Architecture Preparation**
-  - Confirmed runtime environment: Python 3.13.7, Node v24.22.1, Vite, React 19.
-  - Project directory set up at `C:\Users\saies\.gemini\antigravity\scratch\ableconnect`.
-  - Authored comprehensive architectural specifications (`PROJECT_ARCHITECTURE.md`).
-- [x] **19-Table Normalized Database Schema**
-  - Designed, documented (`DATABASE_SCHEMA.md`), and mapped via SQLAlchemy ORM all 19 entities:
-    `users`, `teachers`, `students`, `guardians`, `classes`, `class_students`, `student_profiles`, `communication_preferences`, `support_instructions`, `messages`, `communication_boards`, `communication_symbols`, `student_requests`, `emotion_checkins`, `classroom_schedules`, `learning_activities`, `student_progress`, `teacher_observations`, `notifications`.
-  - Multi-dialect engine configured with default local SQLite zero-dependency storage, ready for PostgreSQL via `DATABASE_URL`.
-- [x] **Authentication & Role-Based Permissions (RBAC)**
-  - JWT tokens signed with HMAC-SHA256 and salted bcrypt password verification.
-  - Dedicated RBAC endpoints including zero-friction `/api/auth/demo-switch` for immediate evaluation of all three perspectives.
-  - Ethical child data policies: strict non-indexing, no clinical diagnostic labels on public cards, audit logging (`SECURITY_AND_PRIVACY.md`).
-- [x] **Core Backend REST API (FastAPI)**
-  - Auth router (`/api/auth/login`, `/api/auth/me`, `/api/auth/demo-switch`).
-  - Classes router (`/api/classes`).
-  - Students router (`/api/students`, `/api/students/{id}`, `/api/students/me`).
-  - Communication router (`/api/communication/boards`, `/api/communication/synthesize-sentence`, `/api/communication/requests`, `/api/communication/emotions`, `/api/communication/messages`).
-  - Tools router (`/api/tools/simplify`, `/api/tools/schedule`, `/api/tools/stats`).
-  - Automated seeding (`seed.py`) with realistic, respectful demo personas: Teacher Sarah Jenkins, Student Leo Vance (AAC Mode), Student Maya Patel (Step-by-Step), Student Sam Rivera, Guardian David Chen.
-  - Backend test suite passing 100% (8 test cases in `backend/tests/test_api.py`).
-- [x] **Inclusive Frontend Design & WCAG 2.2 AA Accessibility Engine**
-  - Global `AccessibilityBar` providing:
-    - High Contrast mode toggle (`body.high-contrast`)
-    - Dynamic font scaling (A- / 100% / A+) via CSS rem custom property
-    - Reduced motion toggle for vestibular safety
-    - Web Speech Synthesis toggle and speech announcer
-    - Instant demo persona switcher
-  - Polished **Landing Page** with educational SaaS aesthetics, three role pillars, and quick demo launchpad.
-  - **Teacher Dashboard** layout with:
-    - 8 primary sections (Overview, My Classes, Students, Communication Center, Student Progress, Classroom Activities, Parent Communication, Settings)
-    - Live student assistance request queue with "Mark Seen" and "Respond" actions
-    - Respectful student roster cards highlighting "How to Communicate With This Student" cues
-    - Integrated visual timetable and stats
-    - Student Detail Modal & Instruction Simplifier Modal
-  - **Student Dashboard** layout:
-    - Completely distinct from teacher dashboard: large tactile buttons (min 48-96px), calm contrast, zero clutter
-    - Interactive AAC Picture Communication Board with sentence strip, Web Speech synthesis, and direct transmission to teacher queue
-    - Dignified One-Tap Help Requests ("I need help", "I need a break", "I don't understand", "I need washroom") with clear status tracking (`Sent` -> `Seen` -> `Responded`)
-    - Friendly Emotion Check-in modal with energy meter
-    - Visual daily schedule view
-  - **Guardian Portal** layout:
-    - View of authorized child's support strategies, communication preferences, and direct teacher messaging channel.
-- [x] **Verification & Live Service Execution**
-  - Backend server running live on `http://127.0.0.1:8000` with Swagger docs at `/docs`.
-  - Frontend development server running live on `http://127.0.0.1:5173`.
-  - Full end-to-end help request creation (Student) -> acknowledgment and response (Teacher) tested and verified over HTTP.
+## Remaining deployment blockers
+
+- Push this workspace to a Git remote and link it to Vercel/Render.
+- Create the Render PostgreSQL service and paid persistent disk; set the exact Vercel HTTPS origin in `CORS_ORIGINS`.
+- Configure `VITE_API_URL` in Vercel to the deployed Render API.
+- Bootstrap the first administrator from the authorized Render shell after migrations.
+- Provision synthetic teacher/student/guardian accounts through a reviewed operator process; production seeding remains off and no user-provisioning UI/API is present.
+- Complete operational safeguards still missing from the app: login throttling, password reset/invitation lifecycle, antivirus/content parser scanning, backup restore testing, and a privacy/security review before entering real student data.
+
+**Status: deployment prepared, not production-ready and not deployed.**

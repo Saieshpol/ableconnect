@@ -2,7 +2,7 @@
 
 **Tagline:** *Better Understanding. Easier Communication. Inclusive Education.*
 
-AbleConnect is a specialized, production-ready educational communication platform designed to bridge the gap between teachers, students with disabilities (including autism, speech/hearing/visual impairments, physical and learning disabilities), and parents/guardians.
+AbleConnect is an accessibility-focused educational communication platform foundation designed to support communication between teachers, students, and parents/guardians.
 
 Unlike conventional learning management systems, AbleConnect provides **two-way accessible communication**. Students can communicate their needs, emotions, and questions independently using visual symbol boards (AAC), assistive speech synthesis, and direct help requests, while teachers receive structured individual communication guidelines, support strategies, and instruction simplification tools.
 
@@ -88,7 +88,11 @@ python -m venv venv
 source venv/bin/activate
 
 pip install -r requirements.txt
-python -m app.seed
+
+# Copy .env.example to .env, then set JWT_SECRET_KEY to a random value from:
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+# For disposable local demo data only, set SEED_DEMO_DATA=true and
+# AUTO_CREATE_SCHEMA=true in backend/.env. Production must keep both false.
 uvicorn app.main:app --reload --port 8000
 ```
 Backend API will run at `http://localhost:8000` with Swagger docs at `http://localhost:8000/docs`.
@@ -97,6 +101,7 @@ Backend API will run at `http://localhost:8000` with Swagger docs at `http://loc
 ```bash
 cd frontend
 npm install
+# Copy .env.example to .env.local for local API access
 npm run dev
 ```
 Frontend will run at `http://localhost:5173`.
@@ -105,7 +110,7 @@ Frontend will run at `http://localhost:5173`.
 
 ## 👥 Demo Accounts
 
-The database comes pre-seeded with realistic, respectful demo accounts:
+When `ENVIRONMENT=development`, `SEED_DEMO_DATA=true`, and `AUTO_CREATE_SCHEMA=true`, the local database is seeded with demo accounts. These accounts are not created in production.
 
 | Role | Email | Password | Description |
 | :--- | :--- | :--- | :--- |

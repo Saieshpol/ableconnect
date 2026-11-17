@@ -22,6 +22,18 @@ ENV/
 # Environment variables
 .env
 .env.local
+!.env.example
+**/.env
+**/.env.local
+**/.env.*.local
+backend/*.db
+backend/*.sqlite*
+backend/storage/
+backend/.test-certificates/
+*.db
+*.sqlite
+*.sqlite3
+.vercel/
 
 # IDE
 .vscode/

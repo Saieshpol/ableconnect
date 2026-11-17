@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.security import get_current_user_claims
-from app.models import Classroom, Teacher, ClassStudent, User
+from app.models import Classroom, Teacher, ClassStudent, Student, Guardian, GuardianStudent
 from app.schemas import ClassroomResponse, ClassroomCreate
 
 router = APIRouter(prefix="/classes", tags=["Classes"])
@@ -18,13 +18,30 @@ def get_classes(claims: dict = Depends(get_current_user_claims), db: Session = D
         if not teacher:
             return []
         classes = db.query(Classroom).filter(Classroom.teacher_id == teacher.id).all()
-    else:
-        # If student or guardian, return active classes
+    elif role == "admin":
         classes = db.query(Classroom).filter(Classroom.is_active == True).all()
+    elif role == "student":
+        student = db.query(Student).filter(Student.user_id == user_id).first()
+        classes = db.query(Classroom).join(ClassStudent).filter(
+            ClassStudent.student_id == student.id if student else False,
+            ClassStudent.status == "active", Classroom.is_active == True,
+        ).all() if student else []
+    elif role == "guardian":
+        guardian = db.query(Guardian).filter(Guardian.user_id == user_id).first()
+        classes = db.query(Classroom).join(ClassStudent).join(GuardianStudent, GuardianStudent.student_id == ClassStudent.student_id).filter(
+            GuardianStudent.guardian_id == guardian.id if guardian else False,
+            GuardianStudent.is_authorized == True,
+            ClassStudent.status == "active", Classroom.is_active == True,
+        ).distinct().all() if guardian else []
+    else:
+        raise HTTPException(status_code=403, detail="Not authorized to view classes.")
 
     result = []
     for c in classes:
         student_count = db.query(ClassStudent).filter(ClassStudent.class_id == c.id, ClassStudent.status == "active").count()
+        if role in {"student", "guardian"}:
+            # Do not reveal classmates through aggregate roster counts in family/student views.
+            student_count = 0
         result.append(
             ClassroomResponse(
                 id=c.id,
@@ -46,7 +63,7 @@ def create_class(payload: ClassroomCreate, claims: dict = Depends(get_current_us
     user_id = int(claims["sub"])
     role = claims["role"]
 
-    if role != "teacher" and role != "admin":
+    if role != "teacher":
         raise HTTPException(status_code=403, detail="Only teachers can create classes.")
 
     teacher = db.query(Teacher).filter(Teacher.user_id == user_id).first()

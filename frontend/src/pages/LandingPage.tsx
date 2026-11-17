@@ -14,8 +14,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onOpenLogi
   const { switchRole } = useAuth();
 
   const handleLaunchPersona = async (role: 'teacher' | 'student' | 'guardian', studentId?: number) => {
-    await switchRole(role, studentId);
-    onNavigate(role);
+    if (import.meta.env.DEV) {
+      await switchRole(role, studentId);
+      onNavigate(role);
+    } else {
+      onOpenLogin();
+    }
   };
 
   return (

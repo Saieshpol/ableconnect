@@ -8,10 +8,11 @@ import { LandingPage } from './pages/LandingPage';
 import { TeacherDashboard } from './pages/TeacherDashboard';
 import { StudentDashboard } from './pages/StudentDashboard';
 import { GuardianPortal } from './pages/GuardianPortal';
+import { AdminDashboard } from './pages/AdminDashboard';
 
 const AppContent: React.FC = () => {
   const { role, isAuthenticated } = useAuth();
-  const [currentView, setCurrentView] = useState<'landing' | 'teacher' | 'student' | 'guardian'>('landing');
+  const [currentView, setCurrentView] = useState<'landing' | 'teacher' | 'student' | 'guardian' | 'admin'>('landing');
   const [isLoginOpen, setIsLoginOpen] = useState(false);
 
   // Auto-route based on authenticated role if not explicitly set to landing
@@ -20,6 +21,7 @@ const AppContent: React.FC = () => {
       if (role === 'teacher') setCurrentView('teacher');
       else if (role === 'student') setCurrentView('student');
       else if (role === 'guardian') setCurrentView('guardian');
+      else if (role === 'admin') setCurrentView('admin');
     }
   }, [role, isAuthenticated]);
 
@@ -47,6 +49,7 @@ const AppContent: React.FC = () => {
         {currentView === 'teacher' && <TeacherDashboard />}
         {currentView === 'student' && <StudentDashboard />}
         {currentView === 'guardian' && <GuardianPortal />}
+        {currentView === 'admin' && <AdminDashboard />}
       </main>
 
       {/* 4. Accessible Semantic Footer */}

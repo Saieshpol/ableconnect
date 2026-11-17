@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { X, Lock, Mail, GraduationCap, Sparkles, Shield, AlertCircle } from 'lucide-react';
+import { X, Lock, Mail, GraduationCap, Sparkles, Shield, AlertCircle, ShieldCheck } from 'lucide-react';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -10,8 +10,8 @@ interface LoginModalProps {
 
 export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSuccess }) => {
   const { login, switchRole } = useAuth();
-  const [email, setEmail] = useState('teacher@ableconnect.org');
-  const [password, setPassword] = useState('teacher123');
+  const [email, setEmail] = useState(import.meta.env.DEV ? 'teacher@ableconnect.org' : '');
+  const [password, setPassword] = useState(import.meta.env.DEV ? 'teacher123' : '');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -32,7 +32,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSucce
     }
   };
 
-  const handleQuickLogin = async (role: 'teacher' | 'student' | 'guardian', studentId?: number) => {
+  const handleQuickLogin = async (role: 'teacher' | 'student' | 'guardian' | 'admin', studentId?: number) => {
     setError(null);
     setIsLoading(true);
     try {
@@ -71,12 +71,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSucce
             Sign In to AbleConnect
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Choose a quick demo persona or enter account credentials.
+            {import.meta.env.DEV ? 'Choose a local demo persona or enter account credentials.' : 'Enter your account credentials to continue.'}
           </p>
         </div>
 
-        {/* Demo Personas Fast Selection */}
-        <div className="mb-6">
+        {import.meta.env.DEV && <><div className="mb-6">
           <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2.5">
             Instant Demo Profiles
           </label>
@@ -136,8 +135,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSucce
                 <div className="text-[10px] text-amber-700 font-medium">Guardian</div>
               </div>
             </button>
+            <button
+              type="button"
+              onClick={() => handleQuickLogin('admin')}
+              className="col-span-2 flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50/60 p-2.5 text-left text-violet-900 transition-all hover:bg-violet-100/60"
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-600 text-white"><ShieldCheck className="h-4 w-4" /></span>
+              <span><span className="block text-xs font-bold">Platform Administrator</span><span className="block text-[10px] font-medium text-violet-700">Admin portal</span></span>
+            </button>
           </div>
-        </div>
+        </div></>}
 
         <div className="relative my-4">
           <div className="absolute inset-0 flex items-center">

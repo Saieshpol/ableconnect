@@ -136,6 +136,21 @@ class StudentProfile(Base):
     assistance_level = Column(String(50), default="moderate")  # 'independent', 'minimal', 'moderate', 'intensive'
     alert_preferences = Column(String(100), default="gentle_visual")
     emergency_notes = Column(Text, nullable=True)
+    
+    # Disability & Certificate Information (Declared by Guardian/Authority, Verified by Admin)
+    disability_type = Column(String(100), nullable=True)
+    disability_description = Column(Text, nullable=True)
+    certificate_filename = Column(String(255), nullable=True)
+    certificate_file_path = Column(String(500), nullable=True)
+    certificate_mime_type = Column(String(100), nullable=True)
+    certificate_file_size = Column(Integer, nullable=True)
+    certificate_uploaded_at = Column(DateTime, nullable=True)
+    certificate_uploaded_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    certificate_verification_status = Column(String(30), default="unsubmitted")  # 'unsubmitted', 'pending', 'verified', 'rejected'
+    certificate_verified_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    certificate_verification_notes = Column(Text, nullable=True)
+    certificate_verified_at = Column(DateTime, nullable=True)
+
     updated_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -372,3 +387,36 @@ class Notification(Base):
 
     # Relationships
     user = relationship("User", back_populates="notifications")
+
+
+# 20. guardian_students (Explicit Guardian-to-Student Authorization Mapping)
+class GuardianStudent(Base):
+    __tablename__ = "guardian_students"
+
+    id = Column(Integer, primary_key=True, index=True)
+    guardian_id = Column(Integer, ForeignKey("guardians.id", ondelete="CASCADE"), nullable=False)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    relationship_type = Column(String(50), default="Parent")
+    is_authorized = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    guardian = relationship("Guardian", backref="student_links")
+    student = relationship("Student", backref="guardian_links")
+
+
+# 21. certificate_audit_logs (Compliance & Access Audit Logging)
+class CertificateAuditLog(Base):
+    __tablename__ = "certificate_audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    user_name = Column(String(150), nullable=True)
+    user_role = Column(String(50), nullable=True)
+    action = Column(String(50), nullable=False)  # 'upload', 'view_details', 'download', 'verify', 'reject'
+    details = Column(Text, nullable=True)
+    ip_address = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    student = relationship("Student")
+

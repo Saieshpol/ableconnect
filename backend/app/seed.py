@@ -1,16 +1,42 @@
+import os
 from datetime import datetime, date
 from sqlalchemy.orm import Session
 from app.core.database import SessionLocal, engine, Base
 from app.core.security import hash_password
+from app.core.config import settings
 from app.models import (
     User, Teacher, Student, Guardian, Classroom, ClassStudent,
     StudentProfile, CommunicationPreference, SupportInstruction,
     CommunicationBoard, CommunicationSymbol, StudentRequest,
-    EmotionCheckin, ClassroomSchedule, LearningActivity, Message
+    EmotionCheckin, ClassroomSchedule, LearningActivity, Message,
+    GuardianStudent, CertificateAuditLog
 )
 
+def create_sample_pdf(filepath: str, title: str, student_name: str, clinician: str, content: str):
+    """Creates a valid, lightweight PDF file for realistic certificate downloading and viewing."""
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    pdf_content = (
+        f"%PDF-1.4\n"
+        f"1 0 obj << /Title ({title}) /Author ({clinician}) >> endobj\n"
+        f"2 0 obj << /Type /Catalog /Pages 3 0 R >> endobj\n"
+        f"3 0 obj << /Type /Pages /Kids [4 0 R] /Count 1 >> endobj\n"
+        f"4 0 obj << /Type /Page /Parent 3 0 R /MediaBox [0 0 612 792] /Contents 5 0 R >> endobj\n"
+        f"5 0 obj << /Length 200 >> stream\n"
+        f"BT /F1 14 Tf 50 720 Td ({title}) Tj\n"
+        f"/F1 10 Tf 0 -25 Td (Student: {student_name}) Tj\n"
+        f"0 -15 Td (Evaluating Authority: {clinician}) Tj\n"
+        f"0 -25 Td ({content}) Tj ET\n"
+        f"endstream endobj\n"
+        f"xref\n0 6\n0000000000 65535 f \n0000000010 00000 n \n0000000079 00000 n \n0000000136 00000 n \n0000000201 00000 n \n0000000305 00000 n \n"
+        f"trailer << /Size 6 /Root 2 0 R >>\nstartxref\n550\n%%EOF\n"
+    )
+    with open(filepath, "wb") as f:
+        f.write(pdf_content.encode("latin-1"))
+
 def run_seed():
-    print("Dropping and recreating database tables...")
+    if settings.ENVIRONMENT.lower() != "development" or not settings.SEED_DEMO_DATA:
+        raise RuntimeError("Demo seeding is permitted only when ENVIRONMENT=development and SEED_DEMO_DATA=true.")
+    print("Ensuring local demo database tables exist...")
     Base.metadata.create_all(bind=engine)
     db: Session = SessionLocal()
 
@@ -20,8 +46,21 @@ def run_seed():
             print("Database already seeded. Skipping.")
             return
 
-        print("Seeding demo accounts...")
-        # 1. Teacher Sarah Jenkins
+        print("Seeding demo accounts and authorized certificates...")
+
+        # 0. Administrator Dr. Eleanor Vance (Can verify certificates)
+        admin_user = User(
+            email="admin@ableconnect.org",
+            hashed_password=hash_password("admin123"),
+            full_name="Dr. Eleanor Vance, Administrator",
+            role="admin",
+            avatar_url="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80",
+            is_active=True
+        )
+        db.add(admin_user)
+        db.flush()
+
+        # 1. Teacher Sarah Jenkins (Lead Special Ed Teacher - Room 102)
         teacher_user = User(
             email="teacher@ableconnect.org",
             hashed_password=hash_password("teacher123"),
@@ -42,6 +81,32 @@ def run_seed():
         )
         db.add(teacher)
         db.flush()
+
+        # 1b. Second Teacher Mr. Robert Adams (Room 204 - For Class-Boundary Authorization Testing)
+        teacher_user2 = User(
+            email="adams@ableconnect.org",
+            hashed_password=hash_password("teacher123"),
+            full_name="Robert Adams, B.Ed.",
+            role="teacher",
+            avatar_url="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
+            is_active=True
+        )
+        db.add(teacher_user2)
+        db.flush()
+
+        teacher2 = Teacher(
+            user_id=teacher_user2.id,
+            title="Senior Elementary Educator",
+            school_name="Oakridge Elementary Inclusive Academy",
+            department="Upper Primary",
+            room_number="Room 204"
+        )
+        db.add(teacher2)
+        db.flush()
+
+        # Storage directory for certificates
+        storage_dir = settings.CERTIFICATES_STORAGE_DIR
+        os.makedirs(storage_dir, exist_ok=True)
 
         # 2. Student Leo Vance (AAC & Visual Communicator)
         leo_user = User(
@@ -67,13 +132,36 @@ def run_seed():
         db.add(leo)
         db.flush()
 
+        # Create sample certificate file for Leo
+        leo_cert_path = os.path.join(storage_dir, "cert_stu_1_leo_speech_assessment.pdf")
+        create_sample_pdf(
+            filepath=leo_cert_path,
+            title="Comprehensive Speech & Language Pathology Assessment",
+            student_name="Leo Vance (DOB: 2016-05-14)",
+            clinician="Metro Children's Developmental Health Center",
+            content="Diagnosis: Expressive Language Delay. Recommends AAC visual communication boards and additional processing time."
+        )
+
         leo_profile = StudentProfile(
             student_id=leo.id,
             preferred_name="Leo",
             sensory_profile="Sensitive to sudden loud bells; responds well to gentle visual transitions.",
             assistance_level="moderate",
             alert_preferences="gentle_visual",
-            emergency_notes="Carries noise-reducing ear defenders in backpack."
+            emergency_notes="Carries noise-reducing ear defenders in backpack.",
+            # Disability & Certificate Information
+            disability_type="Speech & Communication Impairment",
+            disability_description="Expressive language delay with strong receptive comprehension. Certified by Metro Children's Developmental Health Center.",
+            certificate_filename="leo_vance_speech_evaluation_report.pdf",
+            certificate_file_path=leo_cert_path,
+            certificate_mime_type="application/pdf",
+            certificate_file_size=os.path.getsize(leo_cert_path),
+            certificate_uploaded_at=datetime(2026, 9, 2, 10, 30),
+            certificate_uploaded_by_user_id=None,
+            certificate_verification_status="verified",
+            certificate_verified_by_user_id=admin_user.id,
+            certificate_verification_notes="Official pediatric speech pathology evaluation verified by school administration.",
+            certificate_verified_at=datetime(2026, 9, 5, 14, 0)
         )
         db.add(leo_profile)
 
@@ -139,13 +227,34 @@ def run_seed():
         db.add(maya)
         db.flush()
 
+        # Create sample certificate file for Maya (Pending status)
+        maya_cert_path = os.path.join(storage_dir, "cert_stu_2_maya_sensory_report.pdf")
+        create_sample_pdf(
+            filepath=maya_cert_path,
+            title="Sensory Processing & Visual Ergonomics Report",
+            student_name="Maya Patel (DOB: 2015-11-20)",
+            clinician="Pediatric Occupational Therapy Associates",
+            content="Diagnosis: Sensory Sensitivity (Visual/Lighting). Recommends indirect natural lighting and step-by-step written task cards."
+        )
+
         maya_profile = StudentProfile(
             student_id=maya.id,
             preferred_name="Maya",
             sensory_profile="Fluorescent light flicker causes visual fatigue. Prefers natural window light.",
             assistance_level="minimal",
             alert_preferences="text_only",
-            emergency_notes="Needs seated desk away from hallway door."
+            emergency_notes="Needs seated desk away from hallway door.",
+            disability_type="Sensory Processing Sensitivity & Visual Fatigue",
+            disability_description="Visual light sensitivity to fluorescent lighting; benefits from natural window light and step-by-step task breakdown.",
+            certificate_filename="maya_patel_sensory_evaluation.pdf",
+            certificate_file_path=maya_cert_path,
+            certificate_mime_type="application/pdf",
+            certificate_file_size=os.path.getsize(maya_cert_path),
+            certificate_uploaded_at=datetime(2026, 11, 10, 9, 15),
+            certificate_verification_status="pending",
+            certificate_verified_by_user_id=None,
+            certificate_verification_notes=None,
+            certificate_verified_at=None
         )
         db.add(maya_profile)
 
@@ -179,7 +288,7 @@ def run_seed():
         )
         db.add_all([maya_inst1, maya_inst2])
 
-        # 4. Student Sam Rivera
+        # 4. Student Sam Rivera (No certificate uploaded yet: "unsubmitted" state)
         sam_user = User(
             email="sam@ableconnect.org",
             hashed_password=hash_password("student123"),
@@ -209,7 +318,18 @@ def run_seed():
             sensory_profile="High energy; benefits from kinesthetic movement breaks.",
             assistance_level="minimal",
             alert_preferences="gentle_visual",
-            emergency_notes=None
+            emergency_notes=None,
+            disability_type="Attention & Executive Functioning Focus",
+            disability_description="Benefits from short visual checklists and movement breaks every 20 minutes.",
+            certificate_filename=None,
+            certificate_file_path=None,
+            certificate_mime_type=None,
+            certificate_file_size=None,
+            certificate_uploaded_at=None,
+            certificate_verification_status="unsubmitted",
+            certificate_verified_by_user_id=None,
+            certificate_verification_notes=None,
+            certificate_verified_at=None
         )
         db.add(sam_profile)
 
@@ -236,7 +356,61 @@ def run_seed():
         )
         db.add(sam_inst1)
 
-        # 5. Guardian David Chen
+        # 5. Student Chloe Kim (Enrolled in Mr. Adams's Room 204 ONLY - NOT in Sarah's classes)
+        chloe_user = User(
+            email="chloe@ableconnect.org",
+            hashed_password=hash_password("student123"),
+            full_name="Chloe Kim",
+            role="student",
+            avatar_url="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
+            is_active=True
+        )
+        db.add(chloe_user)
+        db.flush()
+
+        chloe = Student(
+            user_id=chloe_user.id,
+            student_code="STU-0201",
+            date_of_birth=date(2015, 8, 12),
+            emergency_contact="+1 (555) 456-7890",
+            bio="Loves mathematics, drawing, and interactive group storytelling.",
+            avatar_color="teal",
+            interface_mode="visual_aac"
+        )
+        db.add(chloe)
+        db.flush()
+
+        chloe_cert_path = os.path.join(storage_dir, "cert_stu_4_chloe_audiology.pdf")
+        create_sample_pdf(
+            filepath=chloe_cert_path,
+            title="Pediatric Audiological Assessment",
+            student_name="Chloe Kim (DOB: 2015-08-12)",
+            clinician="State Children's Hearing Clinic",
+            content="Diagnosis: Bilateral Moderate Hearing Loss. Benefits from assistive FM listening system and preferential front seating."
+        )
+
+        chloe_profile = StudentProfile(
+            student_id=chloe.id,
+            preferred_name="Chloe",
+            sensory_profile="Moderate bilateral hearing loss. Benefits from clear visual cues.",
+            assistance_level="moderate",
+            alert_preferences="gentle_visual",
+            emergency_notes=None,
+            disability_type="Hearing Impairment",
+            disability_description="Bilateral moderate hearing loss. Uses classroom FM system and visual prompts.",
+            certificate_filename="chloe_kim_audiology_report.pdf",
+            certificate_file_path=chloe_cert_path,
+            certificate_mime_type="application/pdf",
+            certificate_file_size=os.path.getsize(chloe_cert_path),
+            certificate_uploaded_at=datetime(2026, 10, 15, 11, 0),
+            certificate_verification_status="verified",
+            certificate_verified_by_user_id=admin_user.id,
+            certificate_verification_notes="Audiological report verified by administration.",
+            certificate_verified_at=datetime(2026, 10, 18, 9, 30)
+        )
+        db.add(chloe_profile)
+
+        # 6. Guardian David Chen (Authorized for Leo Vance)
         guardian_user = User(
             email="guardian@ableconnect.org",
             hashed_password=hash_password("guardian123"),
@@ -255,8 +429,19 @@ def run_seed():
             preferred_contact_method="email"
         )
         db.add(guardian)
+        db.flush()
 
-        # 6. Classrooms
+        # Link Guardian David Chen to Leo Vance
+        guardian_link = GuardianStudent(
+            guardian_id=guardian.id,
+            student_id=leo.id,
+            relationship_type="Parent",
+            is_authorized=True,
+            created_at=datetime.utcnow()
+        )
+        db.add(guardian_link)
+
+        # 7. Classrooms
         class1 = Classroom(
             teacher_id=teacher.id,
             name="Room 102 - Inclusive Grade 3",
@@ -277,21 +462,33 @@ def run_seed():
             color_theme="indigo",
             is_active=True
         )
-        db.add_all([class1, class2])
+        class3 = Classroom(
+            teacher_id=teacher2.id,
+            name="Room 204 - Grade 4 Exploration",
+            grade_level="Grade 4",
+            section="Section C",
+            room="Room 204",
+            schedule_summary="Mon-Fri 08:30 - 14:30",
+            color_theme="purple",
+            is_active=True
+        )
+        db.add_all([class1, class2, class3])
         db.flush()
 
-        # Enroll students
+        # Enrollments
+        # Leo, Maya, Sam are in Teacher Sarah Jenkins's classes (class1 and/or class2)
+        # Chloe is ONLY in Teacher Robert Adams's class (class3)
         enrollments = [
             ClassStudent(class_id=class1.id, student_id=leo.id, status="active"),
             ClassStudent(class_id=class1.id, student_id=maya.id, status="active"),
             ClassStudent(class_id=class1.id, student_id=sam.id, status="active"),
             ClassStudent(class_id=class2.id, student_id=leo.id, status="active"),
             ClassStudent(class_id=class2.id, student_id=maya.id, status="active"),
+            ClassStudent(class_id=class3.id, student_id=chloe.id, status="active"),
         ]
         db.add_all(enrollments)
 
-        # 7. Communication Boards & Symbols
-        # Board 1: Daily Needs
+        # 8. Communication Boards & Symbols
         board_needs = CommunicationBoard(
             student_id=None,
             teacher_id=teacher.id,
@@ -315,7 +512,6 @@ def run_seed():
         ]
         db.add_all(needs_symbols)
 
-        # Board 2: Emotions & Feelings
         board_emotions = CommunicationBoard(
             student_id=None,
             teacher_id=teacher.id,
@@ -339,7 +535,6 @@ def run_seed():
         ]
         db.add_all(emotion_symbols)
 
-        # Board 3: Classroom & Sentence Building
         board_sentence = CommunicationBoard(
             student_id=None,
             teacher_id=teacher.id,
@@ -365,7 +560,7 @@ def run_seed():
         ]
         db.add_all(sentence_symbols)
 
-        # 8. Classroom Timetable
+        # 9. Classroom Timetable
         schedules = [
             ClassroomSchedule(class_id=class1.id, day_of_week="Monday", period_name="Morning Circle & Greeting", subject="Social Check-in", start_time="08:30", end_time="09:00", visual_icon="sun", room="Room 102", instructions="Check in on your emotion board and share your morning goal.", is_current=False),
             ClassroomSchedule(class_id=class1.id, day_of_week="Monday", period_name="Interactive Science Lab", subject="Science", start_time="09:00", end_time="10:00", visual_icon="flask-conical", room="Science Corner", instructions="Observing plant seedlings with magnifying glasses.", is_current=True),
@@ -375,7 +570,7 @@ def run_seed():
         ]
         db.add_all(schedules)
 
-        # 9. Sample Help Request
+        # 10. Sample Help Request
         sample_request = StudentRequest(
             student_id=leo.id,
             teacher_id=teacher.id,
@@ -387,42 +582,21 @@ def run_seed():
         )
         db.add(sample_request)
 
-        # 10. Sample Emotion Check-in
-        leo_checkin = EmotionCheckin(
+        # 11. Initial Audit Log
+        audit_log = CertificateAuditLog(
             student_id=leo.id,
-            class_id=class1.id,
-            emotion="calm",
-            notes="Enjoyed morning music activity.",
-            energy_level=3,
-            created_at=datetime.utcnow()
+            user_id=admin_user.id,
+            user_name=admin_user.full_name,
+            user_role="admin",
+            action="verify",
+            details="Initial setup: Official pediatric evaluation report verified by administration.",
+            ip_address="127.0.0.1",
+            created_at=datetime(2026, 9, 5, 14, 0)
         )
-        db.add(leo_checkin)
-
-        # 11. Sample Learning Activity
-        activity = LearningActivity(
-            class_id=class1.id,
-            teacher_id=teacher.id,
-            title="Plant Seedling Observation Journal",
-            description="Look closely at your seedling. Record leaf count and draw the root structure.",
-            simplified_steps='[{"step_number": 1, "text": "Pick up your seedling cup.", "icon": "package"}, {"step_number": 2, "text": "Count the green leaves.", "icon": "eye"}, {"step_number": 3, "text": "Draw the shape of the leaf in your journal.", "icon": "edit-3"}]',
-            subject="Science",
-            target_skills="Observation, Fine Motor, Counting"
-        )
-        db.add(activity)
-
-        # 12. Sample Message
-        msg = Message(
-            sender_id=teacher_user.id,
-            recipient_id=leo_user.id,
-            content="Great job participating in today's plant observation lesson, Leo! Your drawing was wonderful.",
-            message_type="text",
-            is_read=False,
-            created_at=datetime.utcnow()
-        )
-        db.add(msg)
+        db.add(audit_log)
 
         db.commit()
-        print("Demo data seeded successfully!")
+        print("Demo data and certificates seeded successfully!")
 
     except Exception as e:
         db.rollback()

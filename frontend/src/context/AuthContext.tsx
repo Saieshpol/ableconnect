@@ -62,18 +62,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const switchRole = async (targetRole: UserRole, studentId?: number) => {
-    setIsLoading(true);
-    try {
-      const res = await api.demoSwitch(targetRole, studentId);
-      setUser(res.user);
-      if (targetRole === 'student') {
-        setActiveStudentId(studentId || 1);
-      } else {
-        setActiveStudentId(null);
-      }
-    } finally {
-      setIsLoading(false);
-    }
+    if (!import.meta.env.DEV) throw new Error('Persona switching is available only in local development.');
+    const credentials: Record<UserRole, { email: string; password: string }> = {
+      teacher: { email: 'teacher@ableconnect.org', password: 'teacher123' },
+      student: { email: studentId === 2 ? 'maya@ableconnect.org' : 'leo@ableconnect.org', password: 'student123' },
+      guardian: { email: 'guardian@ableconnect.org', password: 'guardian123' },
+      admin: { email: 'admin@ableconnect.org', password: 'admin123' },
+    };
+    await login(credentials[targetRole].email, credentials[targetRole].password);
+    setActiveStudentId(targetRole === 'student' ? (studentId || 1) : null);
   };
 
   return (

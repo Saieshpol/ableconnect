@@ -117,8 +117,8 @@ export const AccessibilityBar: React.FC = () => {
         </button>
       </div>
 
-      {/* Right: Quick Role Switcher for seamless testing */}
-      <div className="flex items-center gap-2">
+      {/* Local demo login is compiled out of production builds. */}
+      {import.meta.env.DEV && <div className="flex items-center gap-2">
         <span className="text-slate-400 hidden sm:inline text-xs flex items-center gap-1">
           <UserCheck className="w-3.5 h-3.5 text-slate-400" />
           <span>Switch Persona:</span>
@@ -165,7 +165,7 @@ export const AccessibilityBar: React.FC = () => {
             Guardian
           </button>
         </div>
-      </div>
+      </div>}
     </div>
   );
 };

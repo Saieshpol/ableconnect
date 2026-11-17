@@ -6,16 +6,12 @@ from app.core.database import engine, Base
 from app.api import auth, classes, students, communication, tools
 from app.seed import run_seed
 
-# Initialize DB tables
-Base.metadata.create_all(bind=engine)
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: seed default demo data if needed
-    try:
+    if settings.AUTO_CREATE_SCHEMA and settings.ENVIRONMENT.lower() == "development":
+        Base.metadata.create_all(bind=engine)
+    if settings.SEED_DEMO_DATA and settings.ENVIRONMENT.lower() == "development":
         run_seed()
-    except Exception as e:
-        print(f"Startup seed notice: {e}")
     yield
     # Shutdown
 
@@ -23,18 +19,18 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     description="AbleConnect: Inclusive Educational Communication Platform connecting teachers, students with disabilities, and guardians.",
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if settings.ENVIRONMENT.lower() != "production" else None,
+    redoc_url="/redoc" if settings.ENVIRONMENT.lower() != "production" else None,
     lifespan=lifespan
 )
 
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permits local Vite dev server on any port
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Include API Routers

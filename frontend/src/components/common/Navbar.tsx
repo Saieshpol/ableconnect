@@ -1,10 +1,10 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Sparkles, HeartHandshake, LogOut, LogIn, GraduationCap, User as UserIcon, Shield } from 'lucide-react';
+import { Sparkles, HeartHandshake, LogOut, LogIn, GraduationCap, Shield, ShieldCheck } from 'lucide-react';
 
 interface NavbarProps {
-  currentView: 'landing' | 'teacher' | 'student' | 'guardian';
-  onNavigate: (view: 'landing' | 'teacher' | 'student' | 'guardian') => void;
+  currentView: 'landing' | 'teacher' | 'student' | 'guardian' | 'admin';
+  onNavigate: (view: 'landing' | 'teacher' | 'student' | 'guardian' | 'admin') => void;
   onOpenLogin: () => void;
 }
 
@@ -82,6 +82,12 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate, onOpenL
             <Shield className="w-4 h-4 text-amber-600" />
             <span>Guardian Portal</span>
           </button>
+          {role === 'admin' && <button
+            onClick={() => onNavigate('admin')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${currentView === 'admin' ? 'bg-white text-violet-700 shadow-xs font-semibold' : 'text-slate-600 hover:text-violet-700'}`}
+          >
+            <ShieldCheck className="w-4 h-4 text-violet-600" /><span>Admin Portal</span>
+          </button>}
         </nav>
 
         {/* User Auth Info & Actions */}

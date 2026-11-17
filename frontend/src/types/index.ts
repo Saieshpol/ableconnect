@@ -51,6 +51,20 @@ export interface SupportInstruction {
   is_active: boolean;
 }
 
+export interface DisabilityCertificateInfo {
+  disability_type?: string;
+  disability_description?: string;
+  has_certificate: boolean;
+  certificate_filename?: string;
+  certificate_mime_type?: string;
+  certificate_file_size?: number;
+  certificate_uploaded_at?: string;
+  certificate_verification_status: 'unsubmitted' | 'pending' | 'verified' | 'rejected';
+  certificate_verification_notes?: string;
+  certificate_verified_at?: string;
+  can_access_certificate: boolean;
+}
+
 export interface StudentDetail {
   id: number;
   user_id: number;
@@ -69,6 +83,7 @@ export interface StudentDetail {
   preferences?: CommunicationPreference;
   support_instructions: SupportInstruction[];
   classes: string[];
+  disability_info?: DisabilityCertificateInfo;
 }
 
 export interface CommunicationSymbol {

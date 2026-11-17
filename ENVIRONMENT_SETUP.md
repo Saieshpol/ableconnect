@@ -1,82 +1,47 @@
-# AbleConnect: Environment Setup Guide
+# AbleConnect: Environment Setup
 
-Follow this guide to run AbleConnect in local development or production environments.
+## Local development
 
----
+Requirements: Python 3.10+, Node.js 18+, and PostgreSQL for deployment. Local development can use SQLite.
 
-## 1. System Requirements
+### Backend
 
-- **Operating System:** Windows 10/11, macOS 12+, or Ubuntu 20.04+
-- **Python:** 3.10 to 3.13
-- **Node.js:** v18.0.0 or higher
-- **npm:** v9.0.0 or higher
-- **Browser:** Chromium-based browser (Chrome, Edge, Brave), Firefox, or Safari for native Web Speech API support.
-
----
-
-## 2. Backend Setup
-
-```bash
+```powershell
 cd backend
-
-# Create virtual environment
 python -m venv venv
-
-# Activate virtual environment
-# Windows (PowerShell):
 .\venv\Scripts\Activate.ps1
-# Windows (cmd):
-.\venv\Scripts\activate.bat
-# Linux/macOS:
-source venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
+Copy-Item .env.example .env
+```
 
-# Run seed script to populate sample data
-python -m app.seed
+Generate a secret with `python -c "import secrets; print(secrets.token_urlsafe(48))"` and put the result in `JWT_SECRET_KEY` in `backend/.env`. To use local demo data, set `SEED_DEMO_DATA=true` and `AUTO_CREATE_SCHEMA=true`; do this only with a disposable local database. Then run:
 
-# Start backend server
+```powershell
 uvicorn app.main:app --reload --port 8000
 ```
 
-Verify backend:
-- Health check: `http://localhost:8000/api/health`
-- Swagger API Docs: `http://localhost:8000/docs`
+### Frontend
 
----
-
-## 3. Frontend Setup
-
-```bash
+```powershell
 cd frontend
-
-# Install npm dependencies
-npm install
-
-# Start Vite development server
-npm run dev
+Copy-Item .env.example .env.local
+pnpm install
+pnpm dev
 ```
 
-Open browser at `http://localhost:5173`.
+`frontend/.env.example` points to the local API. Production builds require `VITE_API_URL` and reject missing values.
 
----
+### Tests and migration checks
 
-## 4. Environment Variables Configuration
+From `backend`:
 
-### Backend (`backend/.env`)
-```env
-APP_NAME=AbleConnect
-ENVIRONMENT=development
-DATABASE_URL=sqlite:///./ableconnect.db
-JWT_SECRET_KEY=ableconnect-super-secure-dev-key-change-in-production
-JWT_ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=1440
-CORS_ORIGINS=["http://localhost:5173","http://localhost:3000","http://127.0.0.1:5173"]
-GEMINI_API_KEY="" # Optional: activates AI instruction simplifier if provided; rule-based fallback active by default
+```powershell
+python -m pytest -q
+python -m alembic upgrade head
 ```
 
-### Frontend (`frontend/.env`)
-```env
-VITE_API_BASE_URL=http://localhost:8000/api
-```
+The tests use a temporary SQLite database and local demo fixtures. For a fresh non-test development database, either enable schema auto-creation locally or run Alembic migrations.
+
+## Production
+
+Do not use demo accounts, SQLite, local filesystem uploads, or the development environment file in production. Configure PostgreSQL and a private persistent disk, apply Alembic migrations, provision an administrator through the authorized service shell, and set exact HTTPS CORS origins. Follow [DEPLOYMENT.md](DEPLOYMENT.md) for Render/Vercel setup and the complete environment-variable checklist.

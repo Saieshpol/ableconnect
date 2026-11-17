@@ -6,7 +6,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user_claims
 from app.models import (
     CommunicationBoard, CommunicationSymbol, StudentRequest, EmotionCheckin,
-    Message, User, Student, Teacher
+    Message, User, Student, Teacher, Classroom, ClassStudent, Guardian, GuardianStudent
 )
 from app.schemas import (
     BoardSchema, SymbolSchema, SentenceSynthesizeRequest, SentenceSynthesizeResponse,
@@ -17,10 +17,57 @@ from app.services.aac_service import AACService
 
 router = APIRouter(prefix="/communication", tags=["Communication"])
 
+def _is_allowed_pair(db: Session, user_a: User, user_b: User) -> bool:
+    if user_a.id == user_b.id:
+        return False
+    roles = {user_a.role, user_b.role}
+    if roles == {"teacher", "student"}:
+        teacher, student_user = (user_a, user_b) if user_a.role == "teacher" else (user_b, user_a)
+        teacher_profile = db.query(Teacher).filter(Teacher.user_id == teacher.id).first()
+        student = db.query(Student).filter(Student.user_id == student_user.id).first()
+        return bool(teacher_profile and student and db.query(ClassStudent).join(Classroom).filter(
+            ClassStudent.student_id == student.id, ClassStudent.status == "active",
+            Classroom.teacher_id == teacher_profile.id, Classroom.is_active == True,
+        ).first())
+    if roles == {"guardian", "student"}:
+        guardian_user, student_user = (user_a, user_b) if user_a.role == "guardian" else (user_b, user_a)
+        guardian = db.query(Guardian).filter(Guardian.user_id == guardian_user.id).first()
+        student = db.query(Student).filter(Student.user_id == student_user.id).first()
+        return bool(guardian and student and db.query(GuardianStudent).filter(
+            GuardianStudent.guardian_id == guardian.id, GuardianStudent.student_id == student.id,
+            GuardianStudent.is_authorized == True,
+        ).first())
+    if roles == {"teacher", "guardian"}:
+        teacher_user, guardian_user = (user_a, user_b) if user_a.role == "teacher" else (user_b, user_a)
+        teacher = db.query(Teacher).filter(Teacher.user_id == teacher_user.id).first()
+        guardian = db.query(Guardian).filter(Guardian.user_id == guardian_user.id).first()
+        return bool(teacher and guardian and db.query(GuardianStudent).join(ClassStudent, ClassStudent.student_id == GuardianStudent.student_id).join(Classroom, Classroom.id == ClassStudent.class_id).filter(
+            GuardianStudent.guardian_id == guardian.id, GuardianStudent.is_authorized == True,
+            ClassStudent.status == "active", Classroom.is_active == True, Classroom.teacher_id == teacher.id,
+        ).first())
+    return False
+
 @router.get("/boards", response_model=List[BoardSchema])
-def get_boards(student_id: Optional[int] = None, db: Session = Depends(get_db)):
+def get_boards(claims: dict = Depends(get_current_user_claims), db: Session = Depends(get_db)):
     """Fetches communication boards with their symbols for visual AAC."""
-    boards = db.query(CommunicationBoard).all()
+    role = claims["role"]
+    user_id = int(claims["sub"])
+    query = db.query(CommunicationBoard).filter(CommunicationBoard.is_default == True)
+    if role == "admin":
+        query = db.query(CommunicationBoard)
+    elif role == "teacher":
+        teacher = db.query(Teacher).filter(Teacher.user_id == user_id).first()
+        if teacher:
+            query = db.query(CommunicationBoard).filter(
+                (CommunicationBoard.is_default == True) | (CommunicationBoard.teacher_id == teacher.id)
+            )
+    elif role == "student":
+        student = db.query(Student).filter(Student.user_id == user_id).first()
+        if student:
+            query = db.query(CommunicationBoard).filter(
+                (CommunicationBoard.is_default == True) | (CommunicationBoard.student_id == student.id)
+            )
+    boards = query.all()
     results = []
     for b in boards:
         symbols = db.query(CommunicationSymbol).filter(
@@ -55,7 +102,7 @@ def get_boards(student_id: Optional[int] = None, db: Session = Depends(get_db)):
     return results
 
 @router.post("/synthesize-sentence", response_model=SentenceSynthesizeResponse)
-def synthesize_sentence(payload: SentenceSynthesizeRequest):
+def synthesize_sentence(payload: SentenceSynthesizeRequest, claims: dict = Depends(get_current_user_claims)):
     """Turns selected picture card tokens into a natural spoken sentence."""
     result = AACService.synthesize_sentence(payload.symbols)
     return SentenceSynthesizeResponse(
@@ -72,13 +119,21 @@ def create_request(payload: StudentRequestCreate, claims: dict = Depends(get_cur
     if not student:
         raise HTTPException(status_code=400, detail="Only students can submit help requests.")
 
-    # Find teacher assigned if available
-    teacher = db.query(Teacher).first()
+    enrollments = db.query(ClassStudent).join(Classroom).filter(
+        ClassStudent.student_id == student.id, ClassStudent.status == "active", Classroom.is_active == True
+    )
+    if payload.class_id is not None:
+        enrollments = enrollments.filter(ClassStudent.class_id == payload.class_id)
+    enrollment = enrollments.first()
+    if not enrollment:
+        raise HTTPException(status_code=403, detail="Student is not enrolled in the requested class.")
+    classroom = db.query(Classroom).filter(Classroom.id == enrollment.class_id).first()
+    teacher = db.query(Teacher).filter(Teacher.id == classroom.teacher_id).first() if classroom else None
 
     req = StudentRequest(
         student_id=student.id,
         teacher_id=teacher.id if teacher else None,
-        class_id=payload.class_id,
+        class_id=enrollment.class_id,
         request_type=payload.request_type,
         message=payload.message or f"Student requested: {payload.request_type}",
         status="sent",
@@ -115,9 +170,19 @@ def get_requests(claims: dict = Depends(get_current_user_claims), db: Session = 
         requests = db.query(StudentRequest).filter(
             StudentRequest.student_id == student.id
         ).order_by(StudentRequest.created_at.desc()).all()
-    else:
-        # Teacher or guardian
+    elif role == "teacher":
+        teacher = db.query(Teacher).filter(Teacher.user_id == user_id).first()
+        requests = db.query(StudentRequest).filter(StudentRequest.teacher_id == teacher.id).order_by(StudentRequest.created_at.desc()).limit(50).all() if teacher else []
+    elif role == "guardian":
+        guardian = db.query(Guardian).filter(Guardian.user_id == user_id).first()
+        requests = db.query(StudentRequest).join(GuardianStudent, GuardianStudent.student_id == StudentRequest.student_id).filter(
+            GuardianStudent.guardian_id == guardian.id if guardian else False,
+            GuardianStudent.is_authorized == True,
+        ).order_by(StudentRequest.created_at.desc()).limit(50).all() if guardian else []
+    elif role == "admin":
         requests = db.query(StudentRequest).order_by(StudentRequest.created_at.desc()).limit(50).all()
+    else:
+        raise HTTPException(status_code=403, detail="Not authorized to view requests.")
 
     results = []
     for r in requests:
@@ -150,6 +215,14 @@ def update_request_status(request_id: int, payload: StudentRequestUpdate, claims
     req = db.query(StudentRequest).filter(StudentRequest.id == request_id).first()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found.")
+
+    role = claims["role"]
+    user_id = int(claims["sub"])
+    teacher = db.query(Teacher).filter(Teacher.user_id == user_id).first() if role == "teacher" else None
+    if role != "admin" and (not teacher or req.teacher_id != teacher.id):
+        raise HTTPException(status_code=403, detail="Only the assigned teacher or an administrator can respond to this request.")
+    if payload.status not in {"seen", "responded", "resolved"}:
+        raise HTTPException(status_code=400, detail="Invalid request status.")
 
     req.status = payload.status
     if payload.response_notes:
@@ -189,6 +262,12 @@ def submit_emotion_checkin(payload: EmotionCheckinCreate, claims: dict = Depends
     if not student:
         raise HTTPException(status_code=400, detail="Only students can submit emotion check-ins.")
 
+    if payload.class_id is not None and not db.query(ClassStudent).filter(
+        ClassStudent.student_id == student.id, ClassStudent.class_id == payload.class_id,
+        ClassStudent.status == "active",
+    ).first():
+        raise HTTPException(status_code=403, detail="Student is not enrolled in the selected class.")
+
     checkin = EmotionCheckin(
         student_id=student.id,
         class_id=payload.class_id,
@@ -218,15 +297,23 @@ def get_messages(partner_id: Optional[int] = None, claims: dict = Depends(get_cu
         (Message.sender_id == user_id) | (Message.recipient_id == user_id)
     )
     if partner_id:
+        partner = db.query(User).filter(User.id == partner_id, User.is_active == True).first()
+        current = db.query(User).filter(User.id == user_id).first()
+        if not partner or not current or not _is_allowed_pair(db, current, partner):
+            raise HTTPException(status_code=403, detail="Not authorized to view this conversation.")
         query = query.filter(
             (Message.sender_id == partner_id) | (Message.recipient_id == partner_id)
         )
 
     messages = query.order_by(Message.created_at.asc()).limit(100).all()
+    current = db.query(User).filter(User.id == user_id).first()
     results = []
     for m in messages:
         sender = db.query(User).filter(User.id == m.sender_id).first()
         recipient = db.query(User).filter(User.id == m.recipient_id).first()
+        partner = recipient if m.sender_id == user_id else sender
+        if not current or not partner or not _is_allowed_pair(db, current, partner):
+            continue
         results.append(
             MessageResponse(
                 id=m.id,
@@ -247,8 +334,11 @@ def get_messages(partner_id: Optional[int] = None, claims: dict = Depends(get_cu
 def send_message(payload: MessageCreate, claims: dict = Depends(get_current_user_claims), db: Session = Depends(get_db)):
     user_id = int(claims["sub"])
     recipient = db.query(User).filter(User.id == payload.recipient_id).first()
-    if not recipient:
+    if not recipient or not recipient.is_active:
         raise HTTPException(status_code=404, detail="Recipient user not found.")
+    sender = db.query(User).filter(User.id == user_id).first()
+    if not sender or not _is_allowed_pair(db, sender, recipient):
+        raise HTTPException(status_code=403, detail="You are not an authorized contact for this user.")
 
     msg = Message(
         sender_id=user_id,
@@ -263,7 +353,6 @@ def send_message(payload: MessageCreate, claims: dict = Depends(get_current_user
     db.commit()
     db.refresh(msg)
 
-    sender = db.query(User).filter(User.id == user_id).first()
     return MessageResponse(
         id=msg.id,
         sender_id=msg.sender_id,

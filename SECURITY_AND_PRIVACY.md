@@ -2,6 +2,8 @@
 
 This document governs the privacy, security, and child data protection standards enforced across the AbleConnect platform.
 
+> **Deployment status:** This repository has security controls and deployment preparation, but has not passed a full production privacy/security review. Do not enter real student or disability data until the release checklist in `DEPLOYMENT.md` is completed. Login throttling, password reset/invitations, malware scanning, backup restoration tests, and independent security review remain outstanding.
+
 ---
 
 ## 1. Ethical Stance on Disability & Student Data
